@@ -192,7 +192,7 @@ int EvolveR(REAL y, const REAL amplitude[], REAL dydt[], void *params)
                 ////THIS IS NOT TRUE IF THERE IS b-DEPENDENCE
                 // optimize: as we know that the amplitude saturates to N=1,
                 // we don't have to evolve it at large r
-                if (rind>10 and !par->S->GetBfkl())
+                if (rind>10 and !par->S->GetBfkl() and true)
                 {
                     //if (amplitude[rind-2]>0.99999 and amplitude[rind-1]>0.99999
                     //    and amplitude[rind]>0.99999)
@@ -212,7 +212,11 @@ int EvolveR(REAL y, const REAL amplitude[], REAL dydt[], void *params)
 
 
                 dydt[tmpind] = par->S->RapidityDerivative(y, tmplnr, tmpb, tmptheta,
-                    amplitude, &dipinterp);               
+                    amplitude, &dipinterp);
+                
+                //cout << "dydt at r=" << std::exp(tmplnr)<< ", b=" << tmpb  << " " << dydt[tmpind] << " amp " << amplitude[tmpind]<< " interpolator: " <<
+                //dipinterp.Evaluate(tmpb, tmplnr) << endl;
+
                 
             }
         
@@ -354,8 +358,8 @@ REAL Inthelperf_thetaint(REAL theta, void* p)
     
     if (par->v2_comp == false)
     {
-        // Dipole N1: b1=1/2(b+1/2r+x2), r1=1/2*r+b-x2
         // Need an average over phi(r,b) angle
+
         
         double sum1=0;
         double sum2=0;
@@ -367,39 +371,42 @@ REAL Inthelperf_thetaint(REAL theta, void* p)
             double phirb = 2.0*M_PI*avg/(PHI_RB_AVERAGES-1);
             Vec r(rlen*std::cos(phirb), rlen*std::sin(phirb));
             
-            Vec b1 = b*0.5+r*0.25+x2*0.5;
-            Vec r1 = r*0.5+b-x2;
+            Vec x0 = (r+b*2.0)*0.5;
+            Vec x1 = (b*2.0-r)*0.5;
+            
+            
+            
+            Vec b1 = (x0+x2)*0.5;
+            Vec r1 = x0-x2;
             double cos_b1_r1 = b1*r1/(b1.Len()*r1.Len());
             double cos2phi_b1_r1 = 2.0*pow(cos_b1_r1,2)-1.; // cos(2x) = 2cos^2(x)-1
             
-            sum1 += par->dipoleinterp->Evaluate(b1.Len(), std::log(r1.Len()) );
+            sum1 = par->dipoleinterp->Evaluate(b1.Len(), std::log(r1.Len()) );
                 // Todo: v2 part
             
             
-            Vec b2 = b-r*0.5+x2;
-            Vec r2 = b-r*0.5-x2;
+            Vec b2 =(x0+x1)*0.5;
+            Vec r2 = x1-x2;
             double cos_b2_r2 = b2*r2/(b2.Len()*r2.Len());
             double cos2phi_b2_r2 = 2.0*pow(cos_b2_r2,2)-1.; // cos(2x) = 2cos^2(x)-1
             
-            sum2 += par->dipoleinterp->Evaluate(b2.Len(),std::log(r2.Len()) );
+            sum2 = par->dipoleinterp->Evaluate(b2.Len(),std::log(r2.Len()) );
                 // Todo: v2 part
             
-            sum3 += par->dipoleinterp->Evaluate( par->b01, par->lnr01);
+            sum3 = par->dipoleinterp->Evaluate( par->b01, par->lnr01);
             // The v2 part cancels here, right?
             
-            sum4 +=par->dipoleinterp->Evaluate(b1.Len(),std::log(r1.Len())) *par->dipoleinterp->Evaluate( b1.Len(), std::log(r1.Len()));
+            sum4 =par->dipoleinterp->Evaluate(b1.Len(),std::log(r1.Len())) *par->dipoleinterp->Evaluate( b2.Len(), std::log(r2.Len()));
             // Todo v2 part
             
+            // Kernels
+            double Xlen = (x0-x2).Len();
+            double Ylen = (x1-x2).Len();
+            result += (sum1+sum2-sum3-sum4)*par->Solv->Kernel(rlen, Xlen, Ylen, par->alphas_r01, par->alphas_r02, par->N->Alpha_s_ic(Ylen*Ylen),par->y, theta);
+            
         }
-        sum1 /= PHI_RB_AVERAGES;
-        sum2 /= PHI_RB_AVERAGES;
-        sum3 /= PHI_RB_AVERAGES;
-        sum4 /= PHI_RB_AVERAGES;
-        
-        
-        
-        result = sum1+sum2-sum3-sum4;
-        
+        result /= PHI_RB_AVERAGES;
+        return result;
     }
     else
     {
@@ -455,7 +462,7 @@ REAL Solver::Kernel(REAL r01, REAL r02, REAL r12, REAL alphas_r01,
     {
         case CONSTANT:
             result = ALPHABAR_s/(2.0*M_PI)
-                    * SQR(r01) / ( SQR(r12) * SQR(r02) );
+                    * SQR(r01) / ( 1e-20+ SQR(r12) * SQR(r02) );
 			if (isnan(result) or isinf(result)) return 0;
 			else return result;
             break;

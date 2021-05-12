@@ -22,7 +22,7 @@
 
 #include "ic_special.hpp"
 
-std::string version = "20160623";
+std::string version = "bBK";
 
 // We need global variables so that the signal handler works
 std::string output="output.dat";

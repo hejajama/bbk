@@ -17,8 +17,12 @@ double DipoleInterpolator2D::Evaluate(double x, double y)
 {
 	double n;
     
+    if (x<0) x=1e-4; // force b>0?
+    
     if (x > maxx or y>maxy or x<minx or y<miny)
         return 0;
+    
+    
     
 	int s = gsl_spline2d_eval_e(gslinterp,x,y, xacc, yacc, &n);
 	if (s==GSL_EDOM) return 0;
