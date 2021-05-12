@@ -5,12 +5,14 @@
 
 #include "solver.hpp"
 #include <tools/interpolation.hpp>
+#include "interpolation2d.hpp"
 #include <gsl/gsl_integration.h>
 #include <gsl/gsl_spline.h>
 #include <gsl/gsl_errno.h>
 #include <gsl/gsl_odeiv.h> // odeiv2 Requires GSL 1.15
 #include <gsl/gsl_sf_bessel.h>
 #include <cmath>
+#include "vector.hpp"
 
 
 /// Accuracy parameters
@@ -21,6 +23,8 @@ int RINTPOINTS = 200;
 REAL RINTACCURACY = 0.00000001;
 double DESOLVEACCURACY = 0.00000001; // orig 0.01, relative accuracy of de solver
 double DESOLVERABSACCURACY = 0;
+
+const int PHI_RB_AVERAGES=5;
 
 using Amplitude::SQR;
 
@@ -155,28 +159,33 @@ int EvolveR(REAL y, const REAL amplitude[], REAL dydt[], void *params)
     EvolutionHelperR* par = (EvolutionHelperR*)params;
     //int vecsize = par->N->BPoints()*par->N->RPoints()*par->N->ThetaPoints();
 
-    // Intialize interpolator (works only if there is no b-dep.)
-    REAL *tmprarray = new REAL[par->N->RPoints()];
-    REAL *tmpyarray = new REAL[par->N->RPoints()];
-    for (int i=0; i<par->N->RPoints(); i++)
+    // Intialize 2d r,b interpolator
+    std::vector<double> ndata;
+    for (int ri=0; ri < par->N->RPoints(); ri++)
     {
-        tmprarray[i] = par->N->RVal(i);
-        tmpyarray[i] = amplitude[i];
+        for (int bi=0; bi < par->N->BPoints(); bi++)
+        {
+            int tmpind = ri*par->N->BPoints()+ bi;
+            ndata.push_back(amplitude[tmpind]);
+        }
     }
-        
-    #pragma omp parallel for schedule(dynamic, 15) // firstprivate(interp) 
+    
+   
+    
+    
+
+    #pragma omp parallel for collapse(3) // firstprivate(interp)
     for (int rind=0; rind < par->N->RPoints(); rind++)
     {
-	Interpolator interp(tmprarray, tmpyarray, par->N->RPoints());
-    interp.Initialize();
-    interp.SetFreeze(true);
-    interp.SetUnderflow(0);
-    interp.SetOverflow(1.0);
-
         for (int thetaind=0; thetaind < par->N->ThetaPoints(); thetaind++)
         {
             for (int bind=0; bind < par->N->BPoints(); bind++)
             {
+                
+                // local interpolator for each thread, not sure if makes sense..
+                // interp(b, ln r)
+                DipoleInterpolator2D dipinterp( par->N->BVals(), par->N->LogRVals(),ndata);
+                
                 int tmpind = rind*par->N->BPoints()*par->N->ThetaPoints()
                     + bind*par->N->ThetaPoints()+thetaind;
 
@@ -198,20 +207,18 @@ int EvolveR(REAL y, const REAL amplitude[], REAL dydt[], void *params)
                     }
                 }
                 REAL tmplnr = par->N->LogRVal(rind);
-                REAL tmplnb = par->N->LogBVal(bind);
-                REAL tmptheta = par->N->ThetaVal(thetaind);
+                REAL tmpb = par->N->BVal(bind);
+                REAL tmptheta = 0; // not used par->N->ThetaVal(thetaind);
 
 
-                dydt[tmpind] = par->S->RapidityDerivative(y, tmplnr, tmplnb, tmptheta,
-                    amplitude, &interp);               
+                dydt[tmpind] = par->S->RapidityDerivative(y, tmplnr, tmpb, tmptheta,
+                    amplitude, &dipinterp);               
                 
             }
         
         }
     }
     
-    delete[] tmprarray;
-    delete[] tmpyarray;
     
     return GSL_SUCCESS;
     
@@ -227,24 +234,26 @@ struct Inthelper_rthetaint
     AmplitudeR* N;
     Solver* Solv;
     REAL y;
-    REAL lnb01;   // impact parameter of the parent dipole
+    REAL b01;   // impact parameter of the parent dipole
     REAL lnr01;   // parent dipole
     REAL lnr02;   // integrated over
     REAL n01;
     REAL n02;
     REAL thetab; // angle between r01 and b01
-    bool bdep;     // take into account impact parameter dependency
     REAL alphas_r01;
     REAL alphas_r02;
     const REAL* data;
-    Interpolator* interp;
+    bool v2_comp; // True if we evolve modulation
+    
+    DipoleInterpolator2D *dipoleinterp;
+    DipoleInterpolator2D *v2interp;
 };
 REAL Inthelperf_rint(REAL lnr, void* p);
 REAL Inthelperf_thetaint(REAL theta, void* p);
 
 REAL Solver::RapidityDerivative(REAL y,
-            REAL lnr01, REAL lnb01, REAL thetab, const REAL* data,
-            Interpolator *interp)
+            REAL lnr01, REAL b01, REAL thetab, const REAL* data,
+            DipoleInterpolator2D *interp)
 {
 
     //if (lnr01 <= N->LogRVal(0)) lnr01*=0.999;
@@ -253,12 +262,11 @@ REAL Solver::RapidityDerivative(REAL y,
     // Integrate first over r, then over \theta
     Inthelper_rthetaint helper;
     helper.N=N; helper.Solv=this;
-    helper.y=y; helper.lnb01=lnb01; helper.lnr01=lnr01;
+    helper.y=y; helper.b01=b01; helper.lnr01=lnr01;
     helper.thetab = thetab; helper.data=data;
-    helper.interp = interp;
-    helper.bdep = N->ImpactParameter();
-    //helper.n01 = InterpolateN(lnr01, lnb01, thetab, data);
-    helper.n01 = interp->Evaluate(std::exp(lnr01));
+    helper.dipoleinterp = interp;
+    helper.v2_comp=false; // Todo: implement also true
+    
 
     if (rc!=CONSTANT)
         helper.alphas_r01 = N->Alpha_s_ic(std::exp(2.0*lnr01));
@@ -285,7 +293,7 @@ REAL Solver::RapidityDerivative(REAL y,
     {
         #pragma omp critical
         cerr << "RInt failed at " << LINEINFO << ": lnr=" << lnr01 <<", r= " << std::exp(lnr01) <<", thetab="
-        << thetab <<", lnb01=" << lnb01 <<", result " << result << ", relerr "
+        << thetab <<", b01=" << b01 <<", result " << result << ", relerr "
         << std::abs(abserr/result) << endl;
     }
 
@@ -298,8 +306,6 @@ REAL Inthelperf_rint(REAL lnr, void* p)
 
 
     par->lnr02=lnr;
-    //par->n02 = par->Solv->InterpolateN(lnr, 0, 0, par->data);
-    par->n02 = par->interp->Evaluate(std::exp(lnr));
     gsl_function fun;
     fun.function = Inthelperf_thetaint;
     fun.params = par;
@@ -310,7 +316,6 @@ REAL Inthelperf_rint(REAL lnr, void* p)
     REAL mintheta = 0.0000001;
     REAL maxtheta = 2.0*M_PI-0.0001;
 
-    if (!par->N->ImpactParameter()) maxtheta=M_PI-0.000001;
     if (par->Solv->GetRunningCoupling()!=CONSTANT)
          par->alphas_r02 = par->N->Alpha_s_ic(std::exp(2.0*lnr));
     else
@@ -333,9 +338,6 @@ REAL Inthelperf_rint(REAL lnr, void* p)
 
     result *= std::exp(2.0*lnr);        // Change of variables r->ln r
 
-    if (!par->N->ImpactParameter()) result*=2.0;
-        // As integration limits are [0,Pi]
-
     return result;
 
 }
@@ -343,39 +345,85 @@ REAL Inthelperf_rint(REAL lnr, void* p)
 REAL Inthelperf_thetaint(REAL theta, void* p)
 {
     Inthelper_rthetaint* par = (Inthelper_rthetaint*)p;
-
-    // No impact parameter dependency, "easy" case
-    if (!par->bdep)
+    
+    Vec b(par->b01, 0);
+    double rlen = std::exp(par->lnr01);
+    Vec x2(std::exp(par->lnr02)*cos(theta), std::exp(par->lnr02)*sin(theta));
+    
+    double result=0;
+    
+    if (par->v2_comp == false)
     {
-        REAL r01 = std::exp(par->lnr01);
-        REAL r02 = std::exp(par->lnr02);
-        REAL r12sqr = SQR(r01)+SQR(r02)-2.0*r01*r02*std::cos(theta);
-
-        REAL n12=0;
-        if (r12sqr < SQR(par->N->MinR())) n12=0;
-        else if (r12sqr > SQR(par->N->MaxR())) n12=1;
-        else n12 = par->interp->Evaluate(std::sqrt(r12sqr));
-        //else n12=par->Solv->InterpolateN(0.5*std::log(r12sqr), 0, 0, par->data);
-        REAL alphas_r12=0;
-        if (par->Solv->GetRunningCoupling()!=CONSTANT
-            and par->Solv->GetRunningCoupling() != PARENT)
-                alphas_r12 = par->N->Alpha_s_ic(r12sqr);
+        // Dipole N1: b1=1/2(b+1/2r+x2), r1=1/2*r+b-x2
+        // Need an average over phi(r,b) angle
         
-        REAL n02 = par->n02;
-        //REAL n12 = par->Solv->InterpolateN(0.5*std::log(r12sqr), 0, 0, par->data);
-        REAL n01 = par->n01;
+        double sum1=0;
+        double sum2=0;
+        double sum3=0;
+        double sum4=0;
+        for (int avg=0; avg < PHI_RB_AVERAGES; avg++)
+        {
+            // Todo: integral would be more accurate...
+            double phirb = 2.0*M_PI*avg/(PHI_RB_AVERAGES-1);
+            Vec r(rlen*std::cos(phirb), rlen*std::sin(phirb));
+            
+            Vec b1 = b*0.5+r*0.25+x2*0.5;
+            Vec r1 = r*0.5+b-x2;
+            double cos_b1_r1 = b1*r1/(b1.Len()*r1.Len());
+            double cos2phi_b1_r1 = 2.0*pow(cos_b1_r1,2)-1.; // cos(2x) = 2cos^2(x)-1
+            
+            sum1 += par->dipoleinterp->Evaluate(b1.Len(), std::log(r1.Len()) );
+                // Todo: v2 part
+            
+            
+            Vec b2 = b-r*0.5+x2;
+            Vec r2 = b-r*0.5-x2;
+            double cos_b2_r2 = b2*r2/(b2.Len()*r2.Len());
+            double cos2phi_b2_r2 = 2.0*pow(cos_b2_r2,2)-1.; // cos(2x) = 2cos^2(x)-1
+            
+            sum2 += par->dipoleinterp->Evaluate(b2.Len(),std::log(r2.Len()) );
+                // Todo: v2 part
+            
+            sum3 += par->dipoleinterp->Evaluate( par->b01, par->lnr01);
+            // The v2 part cancels here, right?
+            
+            sum4 +=par->dipoleinterp->Evaluate(b1.Len(),std::log(r1.Len())) *par->dipoleinterp->Evaluate( b1.Len(), std::log(r1.Len()));
+            // Todo v2 part
+            
+        }
+        sum1 /= PHI_RB_AVERAGES;
+        sum2 /= PHI_RB_AVERAGES;
+        sum3 /= PHI_RB_AVERAGES;
+        sum4 /= PHI_RB_AVERAGES;
+        
+        
+        
+        result = sum1+sum2-sum3-sum4;
+        
+    }
+    else
+    {
+        cerr << "WTF" << endl;
+        
+    }
 
-        REAL result = n02 + n12 - n01;
-        if (!par->Solv->GetBfkl()) result -= n02*n12;
+    REAL r01 = std::exp(par->lnr01);
+    REAL r02 = std::exp(par->lnr02);
+    REAL r12sqr = SQR(r01)+SQR(r02)-2.0*r01*r02*std::cos(theta);
 
-        result *= par->Solv->Kernel(r01, r02, std::sqrt(r12sqr), par->alphas_r01,
+    REAL n12=0;
+        
+    REAL alphas_r12=0;
+    if (par->Solv->GetRunningCoupling()!=CONSTANT
+        and par->Solv->GetRunningCoupling() != PARENT)
+                alphas_r12 = par->N->Alpha_s_ic(r12sqr);
+
+    
+    result *= par->Solv->Kernel(r01, r02, std::sqrt(r12sqr), par->alphas_r01,
             par->alphas_r02, alphas_r12, par->y, theta);
 
         return result;
-    }
 
-	cerr << "Impact parameter dependence is not supported!" << endl;
-	exit(1);
 
     return 0;
 }

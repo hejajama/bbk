@@ -9,15 +9,19 @@ using Amplitude::SQR;
 
 double MV::DipoleAmplitude(double r, double b)
 {
-	if (b>1e-10)
-		cerr << "Impact parameter is not supported!" << LINEINFO << endl;
+	
 	const double e = 2.7182818;
-	///TODO: some algorithm to determina small r, e.g. when one has to linearize
-    if (r < 2e-6)   ///NOTE: factor 1/4 "correctly", not as in AAMS paper
-            return std::pow(SQR(r)*qs0sqr, anomalous_dimension)/4.0
-            * std::log( 1.0/(r*lambdaqcd) + ec*e);
-    return 1.0 - std::exp(-std::pow(SQR(r)*qs0sqr, anomalous_dimension)/4.0
-			* std::log( 1.0/(r*lambdaqcd) + ec*e) );
+    double Bp=4.;
+    return 1. - std::exp(-std::pow(SQR(r)*qs0sqr, anomalous_dimension)/4.0*std::exp(-b*b/Bp)
+            * std::log( 1.0/(r*lambdaqcd) + ec*e) );
+    
+}
+
+double MV::DipoleAmplitudeV2(double r, double b)
+{
+    
+    return std::exp(-r*r*b*b/10.);
+    
 }
 
 void MV::SetQsqr(double qsqr)

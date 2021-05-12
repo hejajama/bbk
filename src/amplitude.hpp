@@ -11,6 +11,7 @@
 #include <cmath>
 #include "ic.hpp"
 #include "config.hpp"
+#include "interpolation2d.hpp"
 
 // AmplitudeR::Initialize() must be called before this class is used, but first
 // one needs to set up this (e.g. call SetInitialCondition etc).
@@ -32,7 +33,9 @@ public:
 
     // Return tabulated value of amplitude
     REAL Ntable(int yind, int rind, int bind=0, int thetaind=0);
-
+    
+    // Generate (lnr, b) interpolator
+    DipoleInterpolator2D DipoleInterpolator(int yind);
 
 
     // Returns index of the added rapidity
@@ -43,7 +46,6 @@ public:
     REAL RVal(int rind);
     REAL LogRVal(int rind);
     REAL BVal(int bind);
-    REAL LogBVal(int bind);
     REAL ThetaVal(int thetaind);
     REAL YVal(int yind);
     int RPoints();
@@ -65,7 +67,7 @@ public:
     bool ImpactParameter(); // return bdep
 
     std::vector<REAL>& LogRVals();
-    std::vector<REAL>& LogBVals();
+    std::vector<REAL>& BVals();
     std::vector<REAL>& ThetaVals();
     
     InitialCondition* GetInitialCondition();
@@ -92,10 +94,9 @@ public:
 private:
     std::vector<REAL> logrvals;
     std::vector<REAL> yvals;
-    std::vector<REAL> logbvals;
+    std::vector<REAL> bvals;
     std::vector<REAL> rvals;
     std::vector<REAL> thetavals;
-    bool bdep;      // do we take into account impact parameter dependency
     
     InitialCondition *initial_condition;
     
@@ -114,6 +115,6 @@ private:
 const REAL MINLN_N = -999;
 /// Accuracy settings
 const double MAXR = 100; // orig: 50
-
+const double MAXB=10;
 
 #endif

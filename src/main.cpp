@@ -19,7 +19,7 @@
 #include "ic.hpp"
 #include "mv.hpp"
 #include "ic_datafile.hpp"
-#include "gbw.hpp"
+
 #include "ic_special.hpp"
 
 std::string version = "20160623";
@@ -56,7 +56,7 @@ int main(int argc, char* argv[])
         cout << "-minr minr: set smallest dipole size for the grid" << endl;
         cout << "-output file: save output to given file" << endl;
         cout << "-rc [CONSTANT,PARENT,BALITSKY,KW,MS,JIMWLK_SQRTALPHA]: set RC prescription" << endl;
-        cout << "-ic [MV, GBW, FILE, SPECIAL] params, MV and GBW params: qsqr anomalous_dim x0 ec   [ec only for MV]" << endl;
+        cout << "-ic [MV,  FILE, SPECIAL] params, MV and GBW params: qsqr anomalous_dim x0 ec   [ec only for MV]" << endl;
         cout <<"                                      FILE params: filename x0" << endl;
         cout << "                                     SPECIAL: use hardcoded IC" << endl;
         cout << "-ln_ec: the e_c parameter given for the mv model ic is log of e_c, not e_c" << endl;
@@ -105,7 +105,7 @@ int main(int argc, char* argv[])
         }
         else if (string(argv[i])=="-ic")
         {
-			if (string(argv[i+1])=="MV" or string(argv[i+1])=="GBW" )
+			if (string(argv[i+1])=="MV"  )
             {
 				double qsqr, x0, gamma;
 				qsqr = StrToReal(argv[i+2]);
@@ -121,19 +121,11 @@ int main(int argc, char* argv[])
 					tmpic->SetX0(x0);
 					tmpic->SetLambdaQcd(0.241);
 					tmpic->SetE(ec);
-					N->SetInitialCondition(tmpic); 
+					N->SetInitialCondition(tmpic);
+                    cout << "IC, r=1.5,b=2: " << tmpic->DipoleAmplitude(1.5,2) << endl;
 					ic=tmpic;
 				}
-				else
-				{
-					GBW *tmpic = new GBW();
-					tmpic->SetQsqr(qsqr);
-					tmpic->SetAnomalousDimension(gamma);
-					tmpic->SetX0(x0);
-					tmpic->SetLambdaQcd(0.241);
-					N->SetInitialCondition(tmpic); 
-					ic=tmpic;
-				}
+				
 				N->SetLambdaQcd(0.241);
 				 
 				
@@ -200,7 +192,9 @@ int main(int argc, char* argv[])
 
     N->SetMinR(minr);
     if (fast)
+    {
         N->SetRPoints(150);
+    }
     N->Initialize();
     Solver s(N,fast);
     s.SetBfkl(bfkl);
@@ -215,7 +209,7 @@ int main(int argc, char* argv[])
     for (int i=0; i<argc; i++)
         infostr << argv[i] << " ";
     infostr << endl << "# BK equation solver " << version << " (build " << __DATE__ << " " << __TIME__ << ")" << endl;
-	infostr << "# Heikki Mäntysaari <mantysaari@bnl.gov>, 2011-2016" << endl;
+	infostr << "# Heikki Mäntysaari <heikki.mantysaari@jyu.fi>, 2011-2021" << endl;
     infostr << "# Running coupling: ";
     if (rc==CONSTANT) infostr << "constant, alphabar=" << ALPHABAR_s;
     if (rc==PARENT) infostr << "parent dipole";
@@ -275,10 +269,13 @@ void SaveData()
     {
         out << "###" << std::scientific << std::setprecision(15)
             << N->YVal(yind) << endl;
-        for (int rind=0; rind<N->RPoints(); rind++)
+        for (int bind=0; bind < N->BPoints(); bind++)
         {
-            out << std::scientific << std::setprecision(15)
-                << N->Ntable(yind, rind) << endl;
+            for (int rind=0; rind<N->RPoints(); rind++)
+            {
+                out << N->BVal(bind) << " " << N->RVal(rind) << " " << std::scientific << std::setprecision(15)
+                    << N->Ntable(yind, rind, bind) << endl;
+            }
         }
     }
     out.close();

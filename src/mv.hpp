@@ -21,7 +21,8 @@ class MV : public InitialCondition
 {
 	public:
 		MV();		// Set MV1 parameters
-		double DipoleAmplitude(double r, double b=0);
+		double DipoleAmplitude(double r, double b);
+        double DipoleAmplitudeV2(double r, double b);
 		void SetQsqr(double qsqr);
 		void SetAnomalousDimension(double gamma_);
 		void SetLambdaQcd(double lambda);

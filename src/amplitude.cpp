@@ -20,13 +20,12 @@ using Amplitude::SQR;
 
 AmplitudeR::AmplitudeR()
 {
-    bdep=false;
     Csqr=1.0;
     minr=1e-9;
     lambdaqcd=0.241;
 	maxalphas=0.7;
 	alphas_freeze_c = 0;
-    RPOINTS=3000;
+    RPOINTS=300;
     
 }
 
@@ -37,26 +36,17 @@ void AmplitudeR::SetRPoints(int rp)
 
 void AmplitudeR::Initialize()
 {
-    if (ImpactParameter())
-    {
-        for (int thetaind=0; thetaind<ThetaPoints(); thetaind++)
-        {
-            REAL tmptheta = thetaind*2.0*M_PI / static_cast<REAL>(ThetaPoints()-1.0);
-            thetavals.push_back( tmptheta );
-        }
-    }
-    else
-    {
-        thetavals.push_back(0);
-        logbvals.push_back(MINLN_N);
-    }
-
+   
     for (int rind=0; rind < RPoints(); rind++)
     {
         logrvals.push_back(std::log(MinR()
                 * std::pow(RMultiplier(), rind) ) );
         rvals.push_back(std::exp(logrvals[rind]));
-        if (ImpactParameter()) logbvals.push_back(logrvals[rind]);
+    }
+    
+    for (int bind=0; bind < BPoints(); bind++)
+    {
+        bvals.push_back(MAXB*bind/(BPoints()-1));
     }
 
 
@@ -75,7 +65,7 @@ void AmplitudeR::Initialize()
             }
         }
     }
-
+    
 }
 
 
@@ -114,6 +104,8 @@ int AmplitudeR::AddRapidity(REAL y)
         tmprvec.push_back(tmpbvec);
     }
     n.push_back(tmprvec);
+    
+    cout << "Added rapidity " << y << endl;
 
     return yvals.size()-1;
 }
@@ -131,6 +123,31 @@ void AmplitudeR::AddDataPoint(int yind, int rind, int bind,
 REAL AmplitudeR::Ntable(int yind, int rind, int bind, int thetaind)
 {
     return n[yind][rind][bind][thetaind];
+}
+
+/*
+ * Generate lnr,b interpolator
+ */
+DipoleInterpolator2D AmplitudeR::DipoleInterpolator(int yind)
+{
+    cout << "I should not be here? AmplitudeR::DipoleInterpolator uses wrong format" << endl;
+    exit(1);
+    std::vector<double> zgrid;
+    std::vector<double> lnrdata;
+    std::vector<double> bdata;
+    for (int ri=0; ri < RPoints(); ri++)
+    {
+        for (int bi=0; bi < BPoints(); bi++)
+        {
+            zgrid.push_back(Ntable(yind, ri,bi));
+            lnrdata.push_back(logrvals[ri]);
+            bdata.push_back(bvals[bi]);
+        }
+        
+    }
+    
+    DipoleInterpolator2D interp(lnrdata,bdata,zgrid);
+    return interp;
 }
 
 /*
@@ -244,14 +261,12 @@ int AmplitudeR::YPoints()
 
 int AmplitudeR::BPoints()
 {
-    if (!ImpactParameter()) return 1;
-    return RPoints();
+    return 10;
 }
 
 int AmplitudeR::ThetaPoints()
 {
-    if (!ImpactParameter()) return 1;
-    return 10;
+    return 1; // Hardcoded, as we solve v2 separately
 }
 
 REAL AmplitudeR::MinR()
@@ -300,13 +315,10 @@ REAL AmplitudeR::LogRVal(int rind)
 
 REAL AmplitudeR::BVal(int bind)
 {
-    return std::exp( logbvals[bind] );
+    return bvals[bind];
 }
 
-REAL AmplitudeR::LogBVal(int rind)
-{
-    return logbvals[rind];
-}
+
 
 REAL AmplitudeR::ThetaVal(int thetaind)
 {
@@ -323,9 +335,9 @@ std::vector<REAL>& AmplitudeR::LogRVals()
     return logrvals;
 }
 
-std::vector<REAL>& AmplitudeR::LogBVals()
+std::vector<REAL>& AmplitudeR::BVals()
 {
-    return logbvals;
+    return bvals;
 }
 
 std::vector<REAL>& AmplitudeR::ThetaVals()
@@ -335,9 +347,7 @@ std::vector<REAL>& AmplitudeR::ThetaVals()
 
 bool AmplitudeR::ImpactParameter()
 {
-	if (bdep)
-		cerr << "WTF, IMPACT PARAMETER DEPENDECE?????" << endl;
-    return bdep;
+    return true;
 }
 
 void AmplitudeR::SetInitialCondition(InitialCondition* ic_)

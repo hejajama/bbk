@@ -26,8 +26,8 @@ class Solver
         Solver(AmplitudeR* N_, bool fast_solver=false);
         void Solve(REAL maxy);
 
-        REAL RapidityDerivative(REAL y, REAL lnr01, REAL lnb01, REAL thetab,
-            const REAL* data, Interpolator* interp);
+        REAL RapidityDerivative(REAL y, REAL lnr01, REAL b01, REAL thetab,
+            const REAL* data, DipoleInterpolator2D* interp);
 
         REAL Kernel(REAL r01, REAL r02, REAL r12, REAL alphas_r01=0,
             REAL alphas_r02=0, REAL alphas_r12=0,

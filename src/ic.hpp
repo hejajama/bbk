@@ -17,7 +17,8 @@
 class InitialCondition
 {
 	public:
-		virtual double DipoleAmplitude(double r, double b=0)=0;
+    virtual double DipoleAmplitude(double r, double b) { return 0; };
+    virtual double DipoleAmplitudeV2(double r, double b) { return 0; };
 		virtual std::string GetString();
 		virtual double MinR();	// If IC is loaded from file, return limits
 		virtual double MaxR();
