@@ -80,7 +80,7 @@ void Solver::Solve(REAL maxy)
      */
 
     int vecsize = N->BPoints()*N->RPoints()*N->ThetaPoints();
-    REAL *vec = new REAL[vecsize];
+    REAL *vec = new REAL[2*vecsize]; // First 1/2 is N, second 1/2 is v2
     for (int rind=0; rind<N->RPoints(); rind++)
     {
         for (int bind=0; bind<N->BPoints(); bind++)
@@ -89,6 +89,15 @@ void Solver::Solve(REAL maxy)
             {
                  vec[rind*N->BPoints()*N->ThetaPoints() + bind*N->ThetaPoints()+thetaind]
                     = N->Ntable(0, rind, bind, thetaind);
+                
+                vec[vecsize+rind*N->BPoints()*N->ThetaPoints() + bind*N->ThetaPoints()+thetaind]
+                   = N->V2table(0, rind, bind, thetaind);
+                
+                if (thetaind > 0)
+                {
+                    std::cerr << "Note, this BBK code evolves N and v2, so it can't support thetaind grid!" << endl;
+                    exit(1);
+                }
             }
         }
     }
@@ -137,6 +146,7 @@ void Solver::Solve(REAL maxy)
                     int tmpind = rind*N->BPoints()*N->ThetaPoints()
                             + bind*N->ThetaPoints()+thetaind;
                     N->AddDataPoint(yind, rind, bind, thetaind, vec[tmpind]);
+                    N->AddV2DataPoint(yind, rind, bind, thetaind, vec[vecsize+tmpind]);
                 }
             }
         }
@@ -157,70 +167,59 @@ int EvolveR(REAL y, const REAL amplitude[], REAL dydt[], void *params)
 {
     //cout << "Evolving with y=" <<y << endl;
     EvolutionHelperR* par = (EvolutionHelperR*)params;
-    //int vecsize = par->N->BPoints()*par->N->RPoints()*par->N->ThetaPoints();
+    int vecsize = par->N->BPoints()*par->N->RPoints()*par->N->ThetaPoints();
 
     // Intialize 2d r,b interpolator
     std::vector<double> ndata;
+    std::vector<double> v2data;
     for (int ri=0; ri < par->N->RPoints(); ri++)
     {
         for (int bi=0; bi < par->N->BPoints(); bi++)
         {
             int tmpind = ri*par->N->BPoints()+ bi;
             ndata.push_back(amplitude[tmpind]);
+            v2data.push_back(amplitude[vecsize+tmpind]);
         }
     }
     
    
     
     
-
-    #pragma omp parallel for collapse(3) // firstprivate(interp)
+    int thetaind=0;
+    #pragma omp parallel for collapse(2) // firstprivate(interp)
     for (int rind=0; rind < par->N->RPoints(); rind++)
     {
-        for (int thetaind=0; thetaind < par->N->ThetaPoints(); thetaind++)
-        {
+        //for (int thetaind=0; thetaind < par->N->ThetaPoints(); thetaind++)
+        //{
             for (int bind=0; bind < par->N->BPoints(); bind++)
             {
                 
                 // local interpolator for each thread, not sure if makes sense..
                 // interp(b, ln r)
                 DipoleInterpolator2D dipinterp( par->N->BVals(), par->N->LogRVals(),ndata);
+                DipoleInterpolator2D v2interp( par->N->BVals(), par->N->LogRVals(),v2data);
                 
                 int tmpind = rind*par->N->BPoints()*par->N->ThetaPoints()
                     + bind*par->N->ThetaPoints()+thetaind;
 
-                ////THIS IS NOT TRUE IF THERE IS b-DEPENDENCE
-                // optimize: as we know that the amplitude saturates to N=1,
-                // we don't have to evolve it at large r
-                if (rind>10 and !par->S->GetBfkl() and true)
-                {
-                    //if (amplitude[rind-2]>0.99999 and amplitude[rind-1]>0.99999
-                    //    and amplitude[rind]>0.99999)
-					if (amplitude[rind]==1)
-                    {
-                        dydt[tmpind]=0;
-                        /*#pragma omp critical
-                        {
-                            cout << "Skipping r=" << par->N->RVal(rind) << endl;
-                        }*/
-                        continue;
-                    }
-                }
                 REAL tmplnr = par->N->LogRVal(rind);
                 REAL tmpb = par->N->BVal(bind);
                 REAL tmptheta = 0; // not used par->N->ThetaVal(thetaind);
 
 
                 dydt[tmpind] = par->S->RapidityDerivative(y, tmplnr, tmpb, tmptheta,
-                    amplitude, &dipinterp);
+                    amplitude, &dipinterp, &v2interp, false);
                 
-                //cout << "dydt at r=" << std::exp(tmplnr)<< ", b=" << tmpb  << " " << dydt[tmpind] << " amp " << amplitude[tmpind]<< " interpolator: " <<
+                dydt[vecsize+tmpind] = par->S->RapidityDerivative(y, tmplnr, tmpb, tmptheta,
+                    amplitude, &dipinterp, &v2interp, true);
+                
+                //cout << "dydt at r=" << std::exp(tmplnr)<< ", b=" << tmpb  << " dN0/dy " << dydt[tmpind] << " dv2/dy " << dydt[vecsize+tmpind] << " amp " << amplitude[tmpind]<< " v2 " << amplitude[vecsize+tmpind] << endl;
                 //dipinterp.Evaluate(tmpb, tmplnr) << endl;
 
                 
             }
         
-        }
+       // }
     }
     
     
@@ -257,7 +256,7 @@ REAL Inthelperf_thetaint(REAL theta, void* p);
 
 REAL Solver::RapidityDerivative(REAL y,
             REAL lnr01, REAL b01, REAL thetab, const REAL* data,
-            DipoleInterpolator2D *interp)
+            DipoleInterpolator2D *interp, DipoleInterpolator2D *v2interp, bool v2comp)
 {
 
     //if (lnr01 <= N->LogRVal(0)) lnr01*=0.999;
@@ -269,7 +268,8 @@ REAL Solver::RapidityDerivative(REAL y,
     helper.y=y; helper.b01=b01; helper.lnr01=lnr01;
     helper.thetab = thetab; helper.data=data;
     helper.dipoleinterp = interp;
-    helper.v2_comp=false; // Todo: implement also true
+    helper.v2interp = v2interp;
+    helper.v2_comp=v2comp;
     
 
     if (rc!=CONSTANT)
@@ -356,63 +356,68 @@ REAL Inthelperf_thetaint(REAL theta, void* p)
     
     double result=0;
     
-    if (par->v2_comp == false)
-    {
-        // Need an average over phi(r,b) angle
 
-        
-        double sum1=0;
-        double sum2=0;
-        double sum3=0;
-        double sum4=0;
-        for (int avg=0; avg < PHI_RB_AVERAGES; avg++)
-        {
-            // Todo: integral would be more accurate...
-            double phirb = 2.0*M_PI*avg/(PHI_RB_AVERAGES-1);
-            Vec r(rlen*std::cos(phirb), rlen*std::sin(phirb));
-            
-            Vec x0 = (r+b*2.0)*0.5;
-            Vec x1 = (b*2.0-r)*0.5;
-            
-            
-            
-            Vec b1 = (x0+x2)*0.5;
-            Vec r1 = x0-x2;
-            double cos_b1_r1 = b1*r1/(b1.Len()*r1.Len());
-            double cos2phi_b1_r1 = 2.0*pow(cos_b1_r1,2)-1.; // cos(2x) = 2cos^2(x)-1
-            
-            sum1 = par->dipoleinterp->Evaluate(b1.Len(), std::log(r1.Len()) );
-                // Todo: v2 part
-            
-            
-            Vec b2 =(x0+x1)*0.5;
-            Vec r2 = x1-x2;
-            double cos_b2_r2 = b2*r2/(b2.Len()*r2.Len());
-            double cos2phi_b2_r2 = 2.0*pow(cos_b2_r2,2)-1.; // cos(2x) = 2cos^2(x)-1
-            
-            sum2 = par->dipoleinterp->Evaluate(b2.Len(),std::log(r2.Len()) );
-                // Todo: v2 part
-            
-            sum3 = par->dipoleinterp->Evaluate( par->b01, par->lnr01);
-            // The v2 part cancels here, right?
-            
-            sum4 =par->dipoleinterp->Evaluate(b1.Len(),std::log(r1.Len())) *par->dipoleinterp->Evaluate( b2.Len(), std::log(r2.Len()));
-            // Todo v2 part
-            
-            // Kernels
-            double Xlen = (x0-x2).Len();
-            double Ylen = (x1-x2).Len();
-            result += (sum1+sum2-sum3-sum4)*par->Solv->Kernel(rlen, Xlen, Ylen, par->alphas_r01, par->alphas_r02, par->N->Alpha_s_ic(Ylen*Ylen),par->y, theta);
-            
-        }
-        result /= PHI_RB_AVERAGES;
-        return result;
-    }
-    else
+    double sum1=0;
+    double sum2=0;
+    double sum3=0;
+    double sum4=0;
+    for (int avg=0; avg < PHI_RB_AVERAGES; avg++)
     {
-        cerr << "WTF" << endl;
+        // Todo: integral would be more accurate...
+        double phirb = 2.0*M_PI*avg/(PHI_RB_AVERAGES-1);
+        Vec r(rlen*std::cos(phirb), rlen*std::sin(phirb));
+        
+        Vec x0 = (r+b*2.0)*0.5;
+        Vec x1 = (b*2.0-r)*0.5;
+        
+        
+        
+        Vec b1 = (x0+x2)*0.5;
+        Vec r1 = x0-x2;
+        double cos_b1_r1 = b1*r1/(b1.Len()*r1.Len());
+        double cos2phi_b1_r1 = 2.0*pow(cos_b1_r1,2)-1.; // cos(2x) = 2cos^2(x)-1
+        
+        sum1 = par->dipoleinterp->Evaluate(b1.Len(), std::log(r1.Len()) )
+            + 2.0*par->v2interp->Evaluate(b1.Len(), std::log(r1.Len())) * std::cos(2.0 * cos2phi_b1_r1);
+        
+        
+        
+        Vec b2 =(x0+x1)*0.5;
+        Vec r2 = x1-x2;
+        double cos_b2_r2 = b2*r2/(b2.Len()*r2.Len());
+        double cos2phi_b2_r2 = 2.0*pow(cos_b2_r2,2)-1.; // cos(2x) = 2cos^2(x)-1
+        
+        sum2 = par->dipoleinterp->Evaluate(b2.Len(),std::log(r2.Len()) )
+        + 2.0*par->v2interp->Evaluate(b2.Len(), std::log(r2.Len())) * std::cos(2.0 * cos2phi_b2_r2);
+        
+        sum3 = par->dipoleinterp->Evaluate( par->b01, par->lnr01)
+         + 2.0*par->v2interp->Evaluate(par->b01,par->lnr01) * std::cos(2.0 * phirb);
+        // Note: v2 part above cancels only in <N0> component, not when computing v2 evolution
+       
+        
+        sum4 =(par->dipoleinterp->Evaluate(b1.Len(),std::log(r1.Len()))
+               + 2.0*par->v2interp->Evaluate(b1.Len(), std::log(r1.Len())) * std::cos(2.0 * cos2phi_b1_r1))
+               
+               *( par->dipoleinterp->Evaluate( b2.Len(), std::log(r2.Len()))
+                 +2.0*par->v2interp->Evaluate(b2.Len(), std::log(r2.Len())) * std::cos(2.0 * cos2phi_b2_r2) );
+                
+        if (par->v2_comp)
+        {
+            sum1 *= std::cos(2.0*phirb);
+            sum2 *= std::cos(2.0*phirb);
+            sum3 *= std::cos(2.0*phirb);
+            sum4 *= std::cos(2.0*phirb);
+        }
+        
+        // Kernels
+        double Xlen = (x0-x2).Len();
+        double Ylen = (x1-x2).Len();
+        result += (sum1+sum2-sum3-sum4)*par->Solv->Kernel(rlen, Xlen, Ylen, par->alphas_r01, par->alphas_r02, par->N->Alpha_s_ic(Ylen*Ylen),par->y, theta);
         
     }
+    result /= PHI_RB_AVERAGES;
+    return result;
+
 
     REAL r01 = std::exp(par->lnr01);
     REAL r02 = std::exp(par->lnr02);

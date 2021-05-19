@@ -33,6 +33,7 @@ public:
 
     // Return tabulated value of amplitude
     REAL Ntable(int yind, int rind, int bind=0, int thetaind=0);
+    REAL V2table(int yind, int rind, int bind=0, int thetaind=0);
     
     // Generate (lnr, b) interpolator
     DipoleInterpolator2D DipoleInterpolator(int yind);
@@ -42,6 +43,7 @@ public:
     int AddRapidity(REAL y);
 
     void AddDataPoint(int yind, int rind, int bind, int thetaind, REAL value);
+    void AddV2DataPoint(int yind, int rind, int bind, int thetaind, REAL v2value);
 
     REAL RVal(int rind);
     REAL LogRVal(int rind);
@@ -90,7 +92,9 @@ public:
 
 
     // amplitude[yind][rind][bind][thetaind]
+    // Decomposition: N = n + 2.0 * v2 * cos(2phi_rb)
     std::vector < std::vector< std::vector< std::vector<REAL> > > > n;
+    std::vector < std::vector< std::vector< std::vector<REAL> > > > v2;
 private:
     std::vector<REAL> logrvals;
     std::vector<REAL> yvals;

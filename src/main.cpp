@@ -248,7 +248,7 @@ int main(int argc, char* argv[])
 
 void SaveData()
 {
-    cout << "Saving data in file " << output << endl;
+    
 
     /*
      * Save data into a file
@@ -257,13 +257,17 @@ void SaveData()
 
     std::ofstream out;
     out.open(output.c_str());
+    
+    std::stringstream ss(output); ss << output; ss << "_v2";
+    std::ofstream outv2;
+    outv2.open(ss.str());
+               
+               
+    cout << "Saving data in file " << output << " and " << ss.str() << endl;
+    
     out << infostr.str();
+    outv2 << infostr.str();
 
-    out << "###" << std::scientific << std::setprecision(15) << N->MinR() << endl;
-    out << "###" << std::scientific << std::setprecision(15) <<
-        N->RMultiplier()  << endl;
-    out << "###" << N->RPoints() << endl;
-    out << "###" << N->GetInitialCondition()->X0() << endl;
 
     for (int yind=0; yind<N->YPoints(); yind++)
     {
@@ -275,6 +279,8 @@ void SaveData()
             {
                 out << N->BVal(bind) << " " << N->RVal(rind) << " " << std::scientific << std::setprecision(15)
                     << N->Ntable(yind, rind, bind) << endl;
+                outv2 << N->BVal(bind) << " " << N->RVal(rind) << " " << std::scientific << std::setprecision(15)
+                    << N->V2table(yind, rind, bind) << endl;
             }
         }
     }

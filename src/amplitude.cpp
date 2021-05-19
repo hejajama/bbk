@@ -62,6 +62,8 @@ void AmplitudeR::Initialize()
                 //    = InitialCondition(RVal(rind), BVal(bind) );
                 n[0][rind][bind][thetaind] 
 					= initial_condition->DipoleAmplitude(RVal(rind), BVal(bind));
+                v2[0][rind][bind][thetaind]
+                    = initial_condition->DipoleAmplitudeV2(RVal(rind), BVal(bind));
             }
         }
     }
@@ -89,21 +91,28 @@ int AmplitudeR::AddRapidity(REAL y)
 
     // n[yind][rind][bind][thetaind]
     std::vector< std::vector< std::vector< REAL> > > tmprvec;
+    std::vector< std::vector< std::vector< REAL> > > tmprvec_v2;
     for (int rind=0; rind<RPoints(); rind++)
     {
         std::vector< std::vector<REAL> > tmpbvec;
+        std::vector< std::vector<REAL> > tmpbvec_v2;
         for (int bind=0; bind<BPoints(); bind++)
         {
             std::vector<REAL> tmpthetavec;
+            std::vector<REAL> tmpthetavec_v2;
             for (int thetaind=0; thetaind < ThetaPoints(); thetaind++)
             {
                 tmpthetavec.push_back(0);
+                tmpthetavec_v2.push_back(0);
             }
             tmpbvec.push_back(tmpthetavec);
+            tmpbvec_v2.push_back(tmpthetavec_v2);
         }
         tmprvec.push_back(tmpbvec);
+        tmprvec_v2.push_back(tmpbvec_v2);
     }
     n.push_back(tmprvec);
+    v2.push_back(tmprvec_v2);
     
     cout << "Added rapidity " << y << endl;
 
@@ -116,6 +125,11 @@ void AmplitudeR::AddDataPoint(int yind, int rind, int bind,
 {
     n[yind][rind][bind][thetaind] = value;
 }
+void AmplitudeR::AddV2DataPoint(int yind, int rind, int bind,
+    int thetaind, REAL value)
+{
+    v2[yind][rind][bind][thetaind] = value;
+}
 
 /*
  * Return tabulated value of amplitude
@@ -123,6 +137,11 @@ void AmplitudeR::AddDataPoint(int yind, int rind, int bind,
 REAL AmplitudeR::Ntable(int yind, int rind, int bind, int thetaind)
 {
     return n[yind][rind][bind][thetaind];
+}
+
+REAL AmplitudeR::V2table(int yind, int rind, int bind, int thetaind)
+{
+    return v2[yind][rind][bind][thetaind];
 }
 
 /*

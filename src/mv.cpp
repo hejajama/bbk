@@ -19,9 +19,9 @@ double MV::DipoleAmplitude(double r, double b)
 
 double MV::DipoleAmplitudeV2(double r, double b)
 {
-    
-    return std::exp(-r*r*b*b/10.);
-    
+    double v2 = r*r*b*b/40.;
+    if (v2/DipoleAmplitude(r,b) > 0.5) return 0.5*DipoleAmplitude(r, b);
+    else return v2;
 }
 
 void MV::SetQsqr(double qsqr)
