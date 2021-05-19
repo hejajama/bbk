@@ -46,12 +46,12 @@ Solver::Solver(AmplitudeR* N_, bool fast_solver)
     fast=fast_solver;
     if (fast)
     {
-        THETAINTPOINTS = 20;
+        THETAINTPOINTS = 8;
         THETAINTACCURACY = 0.01;
-        RINTPOINTS = 20;
-        RINTACCURACY = 0.01;
-        DESOLVERABSACCURACY = 0.0001;
-        DESOLVERABSACCURACY = 0.01;
+        RINTPOINTS = 8;
+        RINTACCURACY = 0.11;
+        DESOLVERABSACCURACY = 0;
+        DESOLVEACCURACY = 0.05;
 
     }
 }
@@ -106,7 +106,7 @@ void Solver::Solve(REAL maxy)
 
     // Intialize GSL
     EvolutionHelperR help; help.N=N; help.S=this;
-    gsl_odeiv_system sys = {EvolveR, NULL, vecsize, &help};
+    gsl_odeiv_system sys = {EvolveR, NULL, 2*vecsize, &help};
         
     gsl_odeiv_step_type * T;
     if (fast==false)
@@ -115,9 +115,9 @@ void Solver::Solve(REAL maxy)
         T = (gsl_odeiv_step_type *)gsl_odeiv_step_rk2;
     
 
-    gsl_odeiv_step * s    = gsl_odeiv_step_alloc (T, vecsize);
+    gsl_odeiv_step * s    = gsl_odeiv_step_alloc (T, 2*vecsize);
     gsl_odeiv_control * c = gsl_odeiv_control_y_new (DESOLVERABSACCURACY, DESOLVEACCURACY);    //abserr relerr
-    gsl_odeiv_evolve * e  = gsl_odeiv_evolve_alloc (vecsize);
+    gsl_odeiv_evolve * e  = gsl_odeiv_evolve_alloc (2*vecsize);
     REAL h = step;  // Initial ODE solver step size
     
     do
@@ -186,7 +186,7 @@ int EvolveR(REAL y, const REAL amplitude[], REAL dydt[], void *params)
     
     
     int thetaind=0;
-    #pragma omp parallel for collapse(2) // firstprivate(interp)
+    #pragma omp parallel for collapse(2) schedule(dynamic,2) // firstprivate(interp)
     for (int rind=0; rind < par->N->RPoints(); rind++)
     {
         //for (int thetaind=0; thetaind < par->N->ThetaPoints(); thetaind++)
@@ -378,17 +378,17 @@ REAL Inthelperf_thetaint(REAL theta, void* p)
         double cos2phi_b1_r1 = 2.0*pow(cos_b1_r1,2)-1.; // cos(2x) = 2cos^2(x)-1
         
         sum1 = par->dipoleinterp->Evaluate(b1.Len(), std::log(r1.Len()) )
-            + 2.0*par->v2interp->Evaluate(b1.Len(), std::log(r1.Len())) * std::cos(2.0 * cos2phi_b1_r1);
+            + 2.0*par->v2interp->Evaluate(b1.Len(), std::log(r1.Len())) * cos2phi_b1_r1;
         
         
         
-        Vec b2 =(x0+x1)*0.5;
+        Vec b2 =(x1+x2)*0.5;
         Vec r2 = x1-x2;
         double cos_b2_r2 = b2*r2/(b2.Len()*r2.Len());
         double cos2phi_b2_r2 = 2.0*pow(cos_b2_r2,2)-1.; // cos(2x) = 2cos^2(x)-1
         
         sum2 = par->dipoleinterp->Evaluate(b2.Len(),std::log(r2.Len()) )
-        + 2.0*par->v2interp->Evaluate(b2.Len(), std::log(r2.Len())) * std::cos(2.0 * cos2phi_b2_r2);
+        + 2.0*par->v2interp->Evaluate(b2.Len(), std::log(r2.Len())) *  cos2phi_b2_r2;
         
         sum3 = par->dipoleinterp->Evaluate( par->b01, par->lnr01)
          + 2.0*par->v2interp->Evaluate(par->b01,par->lnr01) * std::cos(2.0 * phirb);
@@ -396,11 +396,17 @@ REAL Inthelperf_thetaint(REAL theta, void* p)
        
         
         sum4 =(par->dipoleinterp->Evaluate(b1.Len(),std::log(r1.Len()))
-               + 2.0*par->v2interp->Evaluate(b1.Len(), std::log(r1.Len())) * std::cos(2.0 * cos2phi_b1_r1))
-               
+               + 2.0*par->v2interp->Evaluate(b1.Len(), std::log(r1.Len())) * cos2phi_b1_r1)
                *( par->dipoleinterp->Evaluate( b2.Len(), std::log(r2.Len()))
-                 +2.0*par->v2interp->Evaluate(b2.Len(), std::log(r2.Len())) * std::cos(2.0 * cos2phi_b2_r2) );
-                
+                 +2.0*par->v2interp->Evaluate(b2.Len(), std::log(r2.Len())) * cos2phi_b2_r2 );
+        
+        if (isnan(sum1) or isnan(sum2) or isnan(sum3) or isnan(sum4))
+        {
+            cout << "NAN! "<< endl;
+            cout <<cos2phi_b1_r1 << " " <<cos2phi_b2_r2 << endl;
+            cout << r1 << endl << r2 << endl << b1 << endl << b2 << endl; exit(1);
+        }
+        
         if (par->v2_comp)
         {
             sum1 *= std::cos(2.0*phirb);

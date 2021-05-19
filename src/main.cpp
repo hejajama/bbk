@@ -193,7 +193,7 @@ int main(int argc, char* argv[])
     N->SetMinR(minr);
     if (fast)
     {
-        N->SetRPoints(150);
+        N->SetRPoints(50);
     }
     N->Initialize();
     Solver s(N,fast);
