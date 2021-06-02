@@ -42,16 +42,17 @@ Solver::Solver(AmplitudeR* N_, bool fast_solver)
     N=N_;
     deltay=0.2;
     bfkl=false;
+    dndy=false;
 
     fast=fast_solver;
     if (fast)
     {
         THETAINTPOINTS = 8;
-        THETAINTACCURACY = 0.01;
+        THETAINTACCURACY = 0.05;
         RINTPOINTS = 8;
-        RINTACCURACY = 0.11;
+        RINTACCURACY = 0.05;
         DESOLVERABSACCURACY = 0;
-        DESOLVEACCURACY = 0.05;
+        DESOLVEACCURACY = 0.45;
 
     }
 }
@@ -181,12 +182,14 @@ int EvolveR(REAL y, const REAL amplitude[], REAL dydt[], void *params)
             v2data.push_back(amplitude[vecsize+tmpind]);
         }
     }
-    
-   
+    // interp(b, ln r)
+    // Todo: local for each thread, or global here?
+    DipoleInterpolator2D dipinterp( par->N->BVals(), par->N->LogRVals(),ndata);
+    DipoleInterpolator2D v2interp( par->N->BVals(), par->N->LogRVals(),v2data);
     
     
     int thetaind=0;
-    #pragma omp parallel for collapse(2) schedule(dynamic,2) // firstprivate(interp)
+    #pragma omp parallel for collapse(2) //schedule(dynamic,2) // firstprivate(interp)
     for (int rind=0; rind < par->N->RPoints(); rind++)
     {
         //for (int thetaind=0; thetaind < par->N->ThetaPoints(); thetaind++)
@@ -194,10 +197,6 @@ int EvolveR(REAL y, const REAL amplitude[], REAL dydt[], void *params)
             for (int bind=0; bind < par->N->BPoints(); bind++)
             {
                 
-                // local interpolator for each thread, not sure if makes sense..
-                // interp(b, ln r)
-                DipoleInterpolator2D dipinterp( par->N->BVals(), par->N->LogRVals(),ndata);
-                DipoleInterpolator2D v2interp( par->N->BVals(), par->N->LogRVals(),v2data);
                 
                 int tmpind = rind*par->N->BPoints()*par->N->ThetaPoints()
                     + bind*par->N->ThetaPoints()+thetaind;
@@ -205,6 +204,8 @@ int EvolveR(REAL y, const REAL amplitude[], REAL dydt[], void *params)
                 REAL tmplnr = par->N->LogRVal(rind);
                 REAL tmpb = par->N->BVal(bind);
                 REAL tmptheta = 0; // not used par->N->ThetaVal(thetaind);
+                
+               // if ( std::abs(std::exp(tmplnr)-1.9)>0.1 or std::abs(tmpb-2.2)>0.1) continue;
 
 
                 dydt[tmpind] = par->S->RapidityDerivative(y, tmplnr, tmpb, tmptheta,
@@ -213,6 +214,16 @@ int EvolveR(REAL y, const REAL amplitude[], REAL dydt[], void *params)
                 dydt[vecsize+tmpind] = par->S->RapidityDerivative(y, tmplnr, tmpb, tmptheta,
                     amplitude, &dipinterp, &v2interp, true);
                 
+#pragma omp parallel critical
+                {
+                    if (par->S->PrintDnDy() )
+                    {
+                        cout << std::exp(tmplnr) << " " << tmpb << " " << dydt[tmpind] << " " << dydt[vecsize+tmpind] << " " << amplitude[tmpind] << endl;
+                    }
+                }
+                
+                
+                
                 //cout << "dydt at r=" << std::exp(tmplnr)<< ", b=" << tmpb  << " dN0/dy " << dydt[tmpind] << " dv2/dy " << dydt[vecsize+tmpind] << " amp " << amplitude[tmpind]<< " v2 " << amplitude[vecsize+tmpind] << endl;
                 //dipinterp.Evaluate(tmpb, tmplnr) << endl;
 
@@ -220,6 +231,11 @@ int EvolveR(REAL y, const REAL amplitude[], REAL dydt[], void *params)
             }
         
        // }
+    }
+    
+    if (par->S->PrintDnDy() )
+    {
+        exit(1);
     }
     
     
@@ -290,7 +306,7 @@ REAL Solver::RapidityDerivative(REAL y,
     int status; REAL result, abserr;
     status=gsl_integration_qag(&fun, minlnr,
             maxlnr, 0, RINTACCURACY, RINTPOINTS,
-            GSL_INTEG_GAUSS51, workspace, &result, &abserr);
+            GSL_INTEG_GAUSS21, workspace, &result, &abserr);
     gsl_integration_workspace_free(workspace);
 
     if (status)
@@ -329,7 +345,7 @@ REAL Inthelperf_rint(REAL lnr, void* p)
     int status; REAL result, abserr;
     status = gsl_integration_qag(&fun, mintheta,
             maxtheta, 0, THETAINTACCURACY, THETAINTPOINTS,
-            GSL_INTEG_GAUSS51, workspace, &result, &abserr);
+            GSL_INTEG_GAUSS21, workspace, &result, &abserr);
     gsl_integration_workspace_free(workspace);
     if (status and std::abs(result)>1e-3) 
     {

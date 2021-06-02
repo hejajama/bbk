@@ -48,6 +48,7 @@ int main(int argc, char* argv[])
     bool ln_ec=false;
     bool heavyf=false;
     bool fast=false;
+    bool dndy=false;
     
     if (argc>1)  if (string(argv[1])=="-help")
     {
@@ -122,7 +123,7 @@ int main(int argc, char* argv[])
 					tmpic->SetLambdaQcd(0.241);
 					tmpic->SetE(ec);
 					N->SetInitialCondition(tmpic);
-                    cout << "IC, r=1.5,b=2: " << tmpic->DipoleAmplitude(1.5,2) << endl;
+                    cout << "#IC, r=1.5,b=2: " << tmpic->DipoleAmplitude(1.5,2) << endl;
 					ic=tmpic;
 				}
 				
@@ -176,6 +177,8 @@ int main(int argc, char* argv[])
         }
         else if (string(argv[i])=="-heavyf")
             heavyf=true;
+        else if (string(argv[i])=="-dndy")
+            dndy=true;
         else if (string(argv[i])=="-fast")
             fast=true;
         else if (string(argv[i]).substr(0,1)=="-" and string(argv[i-1]) != "-ln_alphas_scaling") // ln_alphas_scaling could be negative
@@ -199,6 +202,7 @@ int main(int argc, char* argv[])
     Solver s(N,fast);
     s.SetBfkl(bfkl);
     s.SetRunningCoupling(rc);
+    s.PrintDnDy(dndy);
     N->SetAlphasScaling(alphas_scaling);
     N->SetAlphasFreeze(alphas_freeze_c);
     if (heavyf)
@@ -272,6 +276,8 @@ void SaveData()
     for (int yind=0; yind<N->YPoints(); yind++)
     {
         out << "###" << std::scientific << std::setprecision(15)
+            << N->YVal(yind) << endl;
+        outv2 << "###" << std::scientific << std::setprecision(15)
             << N->YVal(yind) << endl;
         for (int bind=0; bind < N->BPoints(); bind++)
         {

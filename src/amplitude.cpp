@@ -113,8 +113,6 @@ int AmplitudeR::AddRapidity(REAL y)
     }
     n.push_back(tmprvec);
     v2.push_back(tmprvec_v2);
-    
-    cout << "Added rapidity " << y << endl;
 
     return yvals.size()-1;
 }
@@ -280,7 +278,7 @@ int AmplitudeR::YPoints()
 
 int AmplitudeR::BPoints()
 {
-    return 10;
+    return 20;
 }
 
 int AmplitudeR::ThetaPoints()

@@ -9,6 +9,11 @@ using Amplitude::SQR;
 
 double MV::DipoleAmplitude(double r, double b)
 {
+    // Berger, Stasto
+    return 1.0 - std::exp(-10*r*r*std::exp(-b*b/2));
+    
+    
+    return 1.0-std::exp(-10*r*r*std::exp(-b*b/2.));
 	
 	const double e = 2.7182818;
     double Bp=4.;
@@ -19,6 +24,7 @@ double MV::DipoleAmplitude(double r, double b)
 
 double MV::DipoleAmplitudeV2(double r, double b)
 {
+    return 0; // Berger, Stasto
     double v2 = r*r*b*b/40.;
     if (v2/DipoleAmplitude(r,b) > 0.5) return 0.5*DipoleAmplitude(r, b);
     else return v2;

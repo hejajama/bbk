@@ -119,6 +119,6 @@ private:
 const REAL MINLN_N = -999;
 /// Accuracy settings
 const double MAXR = 100; // orig: 50
-const double MAXB=5;
+const double MAXB=20;
 
 #endif

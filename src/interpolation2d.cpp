@@ -27,10 +27,13 @@ double DipoleInterpolator2D::Evaluate(double x, double y)
 	int s = gsl_spline2d_eval_e(gslinterp,x,y, xacc, yacc, &n);
 	if (s==GSL_EDOM) return 0;
 	if (s) return 0;
+
     
-    if (n<0 or n>1)
+    if (n<0 or n>1.001)
     {
         std::cerr << "What, N(b=" << x <<", r=" << std::exp(y) << " = " << n << std::endl;
+        
+        if (n>1) n=1;
     }
     return n; //gsl_spline2d_eval(gslinterp,x,y, xacc, yacc);
 

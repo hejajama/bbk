@@ -41,13 +41,17 @@ class Solver
 
         void SetBfkl(bool bfkl_);
         bool GetBfkl();
-
+    
+    void PrintDnDy(bool s) { dndy=s; }
+    bool PrintDnDy() { return dndy; }
     private:
         AmplitudeR* N;
 
         RunningCoupling rc;
         REAL deltay;
         bool bfkl;
+    
+    bool dndy;
 
         bool fast;  // true if fast / not so accurate solving parameters are used
 
@@ -58,7 +62,7 @@ class Solver
 const int INTERPOLATION_POINTS = 6;
 
 
-const double ALPHABAR_s = 0.1909859; // alpha_s=0.2
+const double ALPHABAR_s = 0.1; //0.1909859; // alpha_s=0.2
 //const double ALPHABAR_s = 0.2072197;
 
 #endif
