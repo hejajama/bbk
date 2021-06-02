@@ -14,6 +14,7 @@
 #include <cmath>
 #include "vector.hpp"
 
+void SaveData(); // Defined in main.cpp
 
 /// Accuracy parameters
 
@@ -151,6 +152,8 @@ void Solver::Solve(REAL maxy)
                 }
             }
         }
+        
+        SaveData();
     } while (y <= maxy);
 
     gsl_odeiv_evolve_free (e);
